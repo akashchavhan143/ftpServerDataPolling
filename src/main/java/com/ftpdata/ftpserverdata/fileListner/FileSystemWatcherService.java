@@ -1,5 +1,7 @@
 package com.ftpdata.ftpserverdata.fileListner;
 
+import com.ftpdata.ftpserverdata.entity.FailedFileLog;
+import com.ftpdata.ftpserverdata.repository.FailedFileLogRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -146,7 +149,8 @@ public class FileSystemWatcherService {
                     filePath.getFileName(), durationMs, minutes, remainingSeconds);
         }
     }
-
+    @Autowired
+    private FailedFileLogRepository failedFileLogRepository;
     private void moveToFailed(Path sourcePath) {
         try {
             Path targetDir = Paths.get(FAILED_DIR);
@@ -155,13 +159,21 @@ public class FileSystemWatcherService {
             Path targetPath = targetDir.resolve(timestampedName);
 
             Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            logger.warn("Moved file to FAILED: {}", targetPath);
+            // Save to DB
+            FailedFileLog log = new FailedFileLog();
+            log.setFileName(timestampedName);
+            log.setFailureReason("failed  while procesing first time");
+            log.setRetryCount(0);
+            log.setResolved(false);
+            log.setFailureTime(LocalDateTime.now());
+            failedFileLogRepository.save(log);
+            logger.warn("Moved file to FAILED and logged in DB: {}", targetPath);
         } catch (IOException e) {
             logger.error("Failed to move file to FAILED directory: {}", e.getMessage());
         }
     }
 
-    private void moveToSuccess(Path sourcePath) {
+    public void moveToSuccess(Path sourcePath) {
         try {
             Path targetDir = Paths.get(SUCCESS_DIR);
             Files.createDirectories(targetDir);
